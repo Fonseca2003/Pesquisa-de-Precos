@@ -7,13 +7,20 @@ from oauth2client.service_account import ServiceAccountCredentials
 def authenticate_gspread():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     
-    # EM VEZ DE: ServiceAccountCredentials.from_json_keyfile_name(...)
-    # USE ISTO:
-    creds_dict = st.secrets["gcp_service_account"]
-    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+    # Puxa o dicionário do Streamlit Secrets
+    creds_info = dict(st.secrets["gcp_service_account"])
     
-    client = gspread.authorize(creds)
-    return client
+    # LÓGICA DE LIMPEZA ANTIFALHA:
+    # 1. Remove qualquer espaço em branco no início ou fim
+    raw_key = creds_info["private_key"].strip()
+    
+    # 2. Converte os \n de texto para quebras de linha reais
+    # Usamos o replace duas vezes para garantir que pegue tanto barras simples quanto duplas
+    clean_key = raw_key.replace("\\n", "\n").replace("\n\n", "\n")    
+    creds_info["private_key"] = clean_key
+    
+    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_info, scope)
+    return gspread.authorize(creds)
 
 st.set_page_config(page_title="Pesquisa Mart Minas", layout="wide")
 
@@ -120,3 +127,4 @@ try:
 except Exception as e:
 
     st.error(f"Erro: {e}")
+
