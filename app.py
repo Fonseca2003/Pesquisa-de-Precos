@@ -1,4 +1,5 @@
 import streamlit as st
+import json
 import pandas as pd
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
@@ -125,6 +126,7 @@ try:
 except Exception as e:
 
     st.error(f"Erro: {e}")
+
 
 
 
