@@ -8,17 +8,22 @@ from oauth2client.service_account import ServiceAccountCredentials
 def authenticate_gspread():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     
-    # 1. Lê o segredo como texto puro
-    json_text = st.secrets["json_bruto"]
+    # Montamos o dicionário manualmente com o que salvamos no Secrets
+    creds_dict = {
+        "type": "service_account",
+        "project_id": "pesquisa-de-preco-486614",
+        "private_key_id": "4cf64d117718075f829398e8c6ee9e722db51275",
+        "private_key": st.secrets["chave_google"].replace("\\n", "\n"),
+        "client_email": st.secrets["email_google"],
+        "client_id": "100245656459286879290",
+        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+        "token_uri": "https://oauth2.googleapis.com/token",
+        "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+        "client_x509_cert_url": f"https://www.googleapis.com/robot/v1/metadata/x509/{st.secrets['email_google'].replace('@', '%40')}",
+        "universe_domain": "googleapis.com"
+    }
     
-    # 2. Converte o texto para um dicionário JSON real
-    creds_info = json.loads(json_text)
-    
-    # 3. Corrige as quebras de linha da chave privada
-    creds_info["private_key"] = creds_info["private_key"].replace("\\n", "\n")
-    
-    # 4. Cria as credenciais e autoriza
-    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_info, scope)
+    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
     return gspread.authorize(creds)
 
 st.set_page_config(page_title="Pesquisa Mart Minas", layout="wide")
@@ -126,6 +131,7 @@ try:
 except Exception as e:
 
     st.error(f"Erro: {e}")
+
 
 
 
