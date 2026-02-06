@@ -8,18 +8,16 @@ from oauth2client.service_account import ServiceAccountCredentials
 def authenticate_gspread():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     
-    # 1. Lê o texto bruto (Raw) dos Secrets
-    raw_json_str = st.secrets["json_bruto"]
+    # 1. Lê o segredo como texto puro
+    json_text = st.secrets["json_bruto"]
     
-    # 2. Converte para dicionário Python
-    creds_info = json.loads(raw_json_str)
+    # 2. Converte o texto para um dicionário JSON real
+    creds_info = json.loads(json_text)
     
-    # 3. Limpa a chave privada (converte \n de texto para quebra de linha real)
-    # Usamos encode/decode para limpar qualquer escape fantasma
-    final_key = creds_info["private_key"].replace("\\n", "\n")
-    creds_info["private_key"] = final_key
+    # 3. Corrige as quebras de linha da chave privada
+    creds_info["private_key"] = creds_info["private_key"].replace("\\n", "\n")
     
-    # 4. Autoriza
+    # 4. Cria as credenciais e autoriza
     creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_info, scope)
     return gspread.authorize(creds)
 
@@ -128,6 +126,7 @@ try:
 except Exception as e:
 
     st.error(f"Erro: {e}")
+
 
 
 
