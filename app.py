@@ -1,20 +1,23 @@
 import streamlit as st
 import pandas as pd
 import gspread
-from oauth2client.service_account import ServiceAccountCredentials
+from google.oauth2.service_account import Credentials
 
 # --- CONFIGURAÇÃO DA API ---
 def authenticate_gspread():
-    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    # Definimos os escopos
+    scopes = [
+        "https://www.googleapis.com/auth/spreadsheets",
+        "https://www.googleapis.com/auth/drive"
+    ]
     
-    # Transformamos a seção do segredo em um dicionário Python real
+    # Pegamos o dicionário completo dos secrets
     creds_info = dict(st.secrets["gcp_service_account"])
     
-    # O Streamlit geralmente já lida com o \n, mas por segurança:
-    creds_info["private_key"] = creds_info["private_key"].replace("\\n", "\n")
+    # Criamos as credenciais usando a biblioteca moderna
+    # Ela lida melhor com o parsing da private_key
+    creds = Credentials.from_service_account_info(creds_info, scopes=scopes)
     
-    # Autenticação direta usando o dicionário completo
-    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_info, scope)
     return gspread.authorize(creds)
 
 st.set_page_config(page_title="Pesquisa Mart Minas", layout="wide")
@@ -117,3 +120,4 @@ try:
 
 except Exception as e:
     st.error(f"Erro de conexão ou permissão: {e}")
+
