@@ -6,10 +6,12 @@ from oauth2client.service_account import ServiceAccountCredentials
 # --- CONFIGURAÇÃO DA API ---
 def authenticate_gspread():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    creds = ServiceAccountCredentials.from_json_keyfile_name(
-        r"C:\Users\guilherme.machado\Desktop\Automacao\PYTHON\Pesquisa de preco\pesquisa-de-preco-486614-4cf64d117718.json", 
-        scope
-    )
+    
+    # EM VEZ DE: ServiceAccountCredentials.from_json_keyfile_name(...)
+    # USE ISTO:
+    creds_dict = st.secrets["gcp_service_account"]
+    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+    
     client = gspread.authorize(creds)
     return client
 
@@ -116,4 +118,5 @@ try:
         st.warning("Nenhum dado encontrado para os filtros selecionados.")
 
 except Exception as e:
+
     st.error(f"Erro: {e}")
