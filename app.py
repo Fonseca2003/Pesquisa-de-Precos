@@ -7,21 +7,17 @@ from oauth2client.service_account import ServiceAccountCredentials
 def authenticate_gspread():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     
-    # Transforma os secrets em um dicionário real
-    creds_info = {
-        "type": st.secrets["gcp_service_account"]["type"],
-        "project_id": st.secrets["gcp_service_account"]["project_id"],
-        "private_key_id": st.secrets["gcp_service_account"]["private_key_id"],
-        "private_key": st.secrets["gcp_service_account"]["private_key"].replace("\\n", "\n"),
-        "client_email": st.secrets["gcp_service_account"]["client_email"],
-        "client_id": st.secrets["gcp_service_account"]["client_id"],
-        "auth_uri": st.secrets["gcp_service_account"]["auth_uri"],
-        "token_uri": st.secrets["gcp_service_account"]["token_uri"],
-        "auth_provider_x509_cert_url": st.secrets["gcp_service_account"]["auth_provider_x509_cert_url"],
-        "client_x509_cert_url": st.secrets["gcp_service_account"]["client_x509_cert_url"]
-    }
+    # 1. Pegamos a string bruta do segredo que você colou
+    json_bruto = st.secrets["gcp_service_account_bruto"]
     
-    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_info, scope)
+    # 2. Transformamos o texto em um dicionário Python (JSON)
+    info = json.loads(json_bruto)
+    
+    # 3. Corrigimos a chave privada (trocando o texto \n por quebra de linha real)
+    info["private_key"] = info["private_key"].replace("\\n", "\n")
+    
+    # 4. Autenticamos
+    creds = ServiceAccountCredentials.from_json_keyfile_dict(info, scope)
     return gspread.authorize(creds)
 
 st.set_page_config(page_title="Pesquisa Mart Minas", layout="wide")
@@ -129,5 +125,6 @@ try:
 except Exception as e:
 
     st.error(f"Erro: {e}")
+
 
 
