@@ -4,7 +4,7 @@ import gspread
 from google.oauth2.service_account import Credentials
 
 # ================== CONFIGURAÇÃO ==================
-st.set_page_config(page_title="Pesquisa Mart Minas", layout="wide", page_icon="📝")
+st.set_page_config(page_title="Pesquisa Mart Minas", layout="wide", page_icon="icon.png")
 
 # ================== FUNÇÕES CORE ==================
 @st.cache_resource
@@ -55,6 +55,10 @@ try:
         df_f = df_f[df_f[col_comprador] == comp_sel]
 
     # ================== TELA PRINCIPAL ==================
+    st.image(
+        "banner.png", 
+        use_container_width=True
+    )
     st.title("📝 Pesquisa de Preço")
 
     if not df_f.empty:
