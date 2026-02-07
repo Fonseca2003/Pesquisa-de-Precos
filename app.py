@@ -59,7 +59,7 @@ try:
         "banner.png", 
         use_container_width=True
     )
-    st.title("Pesquisa de Preço")
+    st.title("Pesquisa de Preços")
 
     if not df_f.empty:
         # Filtro de Produto em Dropbox na tela principal
@@ -113,4 +113,5 @@ try:
 
 except Exception as e:
     st.error(f"Erro inesperado: {e}")
+
 
