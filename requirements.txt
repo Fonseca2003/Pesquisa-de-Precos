@@ -2,4 +2,10 @@ streamlit
 pandas
 gspread
 oauth2client
+gspread
+pandas
+google-auth
+google-api-python-client
+google-auth-httplib2
+google-auth-oauthlib
 
