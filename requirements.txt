@@ -7,5 +7,6 @@ pandas
 google-auth
 google-api-python-client
 google-auth-httplib2
-google-auth-oauthlib
+google-api-python-client
+streamlit-oauth  # ou use built-in st.login se Streamlit >=1.42
 
