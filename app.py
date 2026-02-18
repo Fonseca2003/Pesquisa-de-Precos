@@ -484,10 +484,41 @@ try:
             item = df_f[df_f[cols[2]] == produto_nome]
             if not item.empty:
                 idx_real = item.index[0]
+                
                 with st.container(border=True):
+                    # --- LAYOUT DINÂMICO (ADAPTA AO MODO CLARO/ESCURO) ---
+                    st.markdown(f"""
+                        <div style="
+                            padding: 12px 20px; 
+                            border-radius: 10px; 
+                            margin-bottom: 20px; 
+                            border: 1px solid rgba(128, 128, 128, 0.3);
+                            background-color: var(--secondary-bg-color);
+                            display: flex;
+                            justify-content: space-around;
+                            align-items: center;
+                            color: var(--text-color);
+                        ">
+                            <div style="font-size: 16px; font-weight: 500;">
+                                Loja: <span style="font-weight: bold;">{st.session_state.loja_sel}</span>
+                            </div>
+                            <div style="width: 1px; height: 25px; background-color: rgba(128, 128, 128, 0.3);"></div>
+                            <div style="font-size: 16px; font-weight: 500;">
+                                Concorrente: <span style="font-weight: bold;">{st.session_state.concorrente_sel}</span>
+                            </div>
+                        </div>
+                    """, unsafe_allow_html=True)
+                    # -------------------------------------------------------
+
                     c1, c2 = st.columns(2)
-                    preco = c1.text_input("Preço Concorrente (R$):", value=str(item.iloc[0][cols[3]]))
-                    obs = c2.text_input("Observação:", value=str(item.iloc[0][cols[4]]))
+                    with c1:
+                        preco = st.text_input("Preço Concorrente (R$):", 
+                                            value=str(item.iloc[0][cols[3]]),
+                                            key=f"p_{idx_real}")
+                    with c2:
+                        obs = st.text_input("Observação:", 
+                                        value=str(item.iloc[0][cols[4]]),
+                                        key=f"o_{idx_real}")
                     
                     if st.button("💾 Salvar e Avançar", type="primary", use_container_width=True):
                         salvar_dados(id_atual, idx_real, preco, obs)
