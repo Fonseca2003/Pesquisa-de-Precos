@@ -1,5 +1,6 @@
 streamlit
 pandas
+numpy
 gspread
 google-auth
-
+xlsxwriter
