@@ -390,7 +390,7 @@ try:
 
         excel_data = to_excel_consolidated(dict_all)
         st.sidebar.download_button(
-            label="📥 Baixar Relatório Completo (Excel)",
+            label="📥 Exportar Relatório Completo",
             data=excel_data,
             file_name=f"Relatorio_Consolidado.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
