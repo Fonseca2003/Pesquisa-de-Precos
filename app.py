@@ -74,6 +74,18 @@ def fetch_data(spreadsheet_id):
     df = pd.DataFrame(data[1:], columns=data[0])
     return df.iloc[:, :7]
 
+def salvar_dados(spreadsheet_id, indice_original, preco, observacao):
+    try:
+        client = gspread.authorize(authenticate_gspread())
+        sheet = client.open_by_key(spreadsheet_id).get_worksheet(0)
+        preco_limpo = str(preco).replace(",", ".").strip()
+        linha_sheets = int(indice_original + 2)
+        sheet.update(f"D{linha_sheets}:E{linha_sheets}", [[preco_limpo, observacao]])
+        st.toast("Dados salvos!", icon="✅")
+        st.cache_data.clear()
+    except Exception as e:
+        st.error(f"Erro ao salvar: {e}")
+
 def preparar_dados_validos(df):
     df_calc = df.copy()
     c_preco, c_ref = df.columns[3], df.columns[6]
@@ -337,22 +349,32 @@ try:
 
     # Login
     if not st.session_state.autenticado:
-        st.markdown('<div class="titulo-centralizado">Portal de Pesquisa</div>', unsafe_allow_html=True)
-        t1, t2 = st.tabs(["Acesso Lojas 🏪", "Acesso Comercial 📊"])
-        with t2:
-            senha = st.text_input("Senha:", type="password")
-            if st.button("Acessar Painel 📈", use_container_width=True):
-                if senha == "admin123":
-                    st.session_state.update({"perfil": "comercial", "autenticado": True})
-                    st.rerun()
-        st.stop()
+            st.markdown('<div class="titulo-centralizado">Portal de Pesquisa</div>', unsafe_allow_html=True)
+            t1, t2 = st.tabs(["Acesso Lojas 🏪", "Acesso Comercial 📊"])
+            
+            with t1: # Lógica vinda do app.py
+                with st.container(border=True):
+                    loja = st.selectbox("Loja:", sorted(df_raw[cols[0]].unique()))
+                    concorrentes_disp = sorted(df_raw[df_raw[cols[0]] == loja][cols[5]].unique())
+                    concorrente = st.selectbox("Concorrente:", concorrentes_disp)
+                    if st.button("Entrar 🚀", use_container_width=True, type="primary"):
+                        st.session_state.update({"perfil": "loja", "autenticado": True, 
+                                            "loja_sel": loja, "concorrente_sel": concorrente})
+                        st.rerun()
+
+            with t2:
+                senha = st.text_input("Senha Comercial:", type="password")
+                if st.button("Acessar Painel 📈", use_container_width=True):
+                    if senha == "admin123":
+                        st.session_state.update({"perfil": "comercial", "autenticado": True})
+                        st.rerun()
+            st.stop()
 
     if st.session_state.perfil == "comercial":
         st.markdown(f'<div class="titulo-centralizado">{nome_sel if "nome_sel" in locals() else NOME_PADRAO}</div>', unsafe_allow_html=True)
         
         # BARRA LATERAL
         st.sidebar.divider()
-        st.sidebar.subheader("📥 Exportação Geral")
         
         dict_all = {"Base Completa Drive": df_raw}
         labels = ["Comprador", "Concorrente", "Loja"]
@@ -367,7 +389,7 @@ try:
 
         excel_data = to_excel_consolidated(dict_all)
         st.sidebar.download_button(
-            label="💾 Baixar Relatório Completo (Excel)",
+            label="📥 Baixar Relatório Completo (Excel)",
             data=excel_data,
             file_name=f"Relatorio_Consolidado.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -427,6 +449,48 @@ try:
             st.subheader("Somas por Produto")
             df_p_s = gerar_tabelas_produtos_cruzada(df_completo, "soma")
             st.dataframe(aplicar_estilo_dinamico(df_p_s.style), use_container_width=True)
+    elif st.session_state.perfil == "loja":
+        if st.sidebar.button("⬅️ Sair / Trocar Loja"):
+            st.session_state.autenticado = False
+            st.rerun()
 
+        # Filtros de Pesquisa
+        df_f = df_raw[(df_raw[cols[0]] == st.session_state.loja_sel) & 
+                      (df_raw[cols[5]] == st.session_state.concorrente_sel)]
+        
+        comp_sel = st.sidebar.selectbox("Filtrar por Setor:", ["Todos"] + sorted(df_f[cols[1]].unique()))
+        if comp_sel != "Todos":
+            df_f = df_f[df_f[cols[1]] == comp_sel]
+
+        st.markdown(f'<div class="titulo-centralizado">Pesquisa: {st.session_state.concorrente_sel}</div>', unsafe_allow_html=True)
+        
+        if not df_f.empty:
+            # Progresso
+            total = len(df_f)
+            preenchidos = df_f[cols[3]].apply(lambda x: str(x).strip() != "").sum()
+            st.progress(preenchidos / total)
+            st.write(f"Progresso: {preenchidos} de {total}")
+
+            # Seleção de Produto
+            opcoes = [f"{('✅' if str(r[cols[3]]).strip() != '' else '❌')} {r[cols[2]]}" 
+                      for _, r in df_f.sort_values(by=cols[2]).iterrows()]
+            
+            idx = min(st.session_state.prod_idx, len(opcoes)-1)
+            escolha = st.selectbox("Selecione o Produto:", opcoes, index=idx)
+            produto_nome = escolha[2:].strip()
+            st.session_state.prod_idx = opcoes.index(escolha)
+
+            item = df_f[df_f[cols[2]] == produto_nome]
+            if not item.empty:
+                idx_real = item.index[0]
+                with st.container(border=True):
+                    c1, c2 = st.columns(2)
+                    preco = c1.text_input("Preço Concorrente (R$):", value=str(item.iloc[0][cols[3]]))
+                    obs = c2.text_input("Observação:", value=str(item.iloc[0][cols[4]]))
+                    
+                    if st.button("💾 Salvar e Avançar", type="primary", use_container_width=True):
+                        salvar_dados(id_atual, idx_real, preco, obs)
+                        st.session_state.prod_idx = min(st.session_state.prod_idx + 1, len(opcoes)-1)
+                        st.rerun()
 except Exception as e: 
     st.error(f"Erro: {e}")
