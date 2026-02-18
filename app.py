@@ -499,11 +499,11 @@ try:
                             align-items: center;
                             color: var(--text-color);
                         ">
-                            <div style="font-size: 16px; font-weight: 500;">
+                            <div style="font-size: 12px; font-weight: 500;">
                                 Loja: <span style="font-weight: bold;">{st.session_state.loja_sel}</span>
                             </div>
                             <div style="width: 1px; height: 25px; background-color: rgba(128, 128, 128, 0.3);"></div>
-                            <div style="font-size: 16px; font-weight: 500;">
+                            <div style="font-size: 12px; font-weight: 500;">
                                 Concorrente: <span style="font-weight: bold;">{st.session_state.concorrente_sel}</span>
                             </div>
                         </div>
@@ -526,3 +526,4 @@ try:
                         st.rerun()
 except Exception as e: 
     st.error(f"Erro: {e}")
+
