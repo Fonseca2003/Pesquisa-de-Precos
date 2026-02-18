@@ -422,7 +422,7 @@ try:
         # Abas Comprador, Concorrente, Loja
         for i, grp in enumerate([cols[1], cols[5], cols[0]]):
             with tabs[i]:
-                st.subheader("Mart Minas Menor Preço x Maior Preço")
+                st.subheader("Mart Minas Menor Preço")
                 df_met = calcular_metricas_simples(df_completo, grp)
                 st.dataframe(df_met, use_container_width=True, hide_index=True)
                 
@@ -432,7 +432,7 @@ try:
                 st.dataframe(aplicar_estilo_dinamico(df_sm.style), use_container_width=True, hide_index=True)
 
         with tabs[3]: # Aba Completo
-            st.subheader("Mart Minas Menor Preço x Maior Preço")
+            st.subheader("Mart Minas Menor Preço")
             df_lc_c = visao_matriz_loja_concorrente(df_completo, "contagem")
             st.dataframe(aplicar_estilo_dinamico(df_lc_c.style), use_container_width=True)
             
@@ -526,5 +526,3 @@ try:
                         st.rerun()
 except Exception as e: 
     st.error(f"Erro: {e}")
-
-
