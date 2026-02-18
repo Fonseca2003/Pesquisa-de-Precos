@@ -348,7 +348,8 @@ try:
         df_completo = df_raw.copy()
 
     # Login
-    if not st.session_state.autenticado:
+    if not st.session_state.autenticado:            
+            st.image("banner.png", use_container_width=True)
             st.markdown('<div class="titulo-centralizado">Portal de Pesquisa</div>', unsafe_allow_html=True)
             t1, t2 = st.tabs(["Acesso Lojas 🏪", "Acesso Comercial 📊"])
             
@@ -365,7 +366,7 @@ try:
             with t2:
                 senha = st.text_input("Senha Comercial:", type="password")
                 if st.button("Acessar Painel 📈", use_container_width=True):
-                    if senha == "admin123":
+                    if senha == "comercialmm2026":
                         st.session_state.update({"perfil": "comercial", "autenticado": True})
                         st.rerun()
             st.stop()
@@ -461,9 +462,9 @@ try:
         comp_sel = st.sidebar.selectbox("Filtrar por Setor:", ["Todos"] + sorted(df_f[cols[1]].unique()))
         if comp_sel != "Todos":
             df_f = df_f[df_f[cols[1]] == comp_sel]
+                    
+        st.image("banner.png", use_container_width=True)
 
-        st.markdown(f'<div class="titulo-centralizado">Pesquisa: {st.session_state.concorrente_sel}</div>', unsafe_allow_html=True)
-        
         if not df_f.empty:
             # Progresso
             total = len(df_f)
