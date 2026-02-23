@@ -66,7 +66,7 @@ def listar_planilhas_no_drive(_client):
     lista_arquivos = _client.list_spreadsheet_files()
     return {f["name"]: f["id"] for f in lista_arquivos}
 
-@st.cache_data(ttl=30)
+@st.cache_data(ttl=300)
 def fetch_data(spreadsheet_id):
     client = gspread.authorize(authenticate_gspread())
     sheet = client.open_by_key(spreadsheet_id).get_worksheet(0)
@@ -526,3 +526,4 @@ try:
                         st.rerun()
 except Exception as e: 
     st.error(f"Erro: {e}")
+
