@@ -380,100 +380,59 @@ def gerar_tabelas_produtos_cruzada(df):
     if df.empty:
         return pd.DataFrame().style
 
-    # Colunas chave
-    c_loja        = cols[0]   # 'Loja'
-    c_comprador   = cols[1]   # 'Comprador'
-    c_produto     = cols[2]   # 'Produto'
-    c_preco_conc  = cols[3]   # Preço Concorrente
-    c_concorrente = cols[5]   # 'Concorrente'
-    c_preco_mart  = cols[6]   # Preço Mart Minas
+    # Definição das colunas baseadas na estrutura do seu código
+    c_loja, c_comprador, c_produto, c_preco_conc, c_concorrente, c_preco_mart = \
+        cols[0], cols[1], cols[2], cols[3], cols[5], cols[6]
 
-    # Garantir numérico
+    # 1. Limpeza e Garantia de tipos
+    df = df.copy()
     for col in [c_preco_conc, c_preco_mart]:
         df[col] = pd.to_numeric(df[col].astype(str).str.replace(',', '.'), errors='coerce')
 
-    # 1. Agregação base
+    # 2. Agregação para remover duplicatas antes do pivot
+    # Isso evita o erro de "non-unique index"
     df_base = (
-        df
-        .groupby([c_comprador, c_produto, c_concorrente, c_loja], as_index=False)
-        .agg({
-            c_preco_conc: 'mean',
-            c_preco_mart: 'first',
-        })
+        df.groupby([c_comprador, c_produto, c_concorrente, c_loja], as_index=False)
+        .agg({c_preco_conc: 'mean', c_preco_mart: 'max'})
         .dropna(subset=[c_preco_conc])
     )
 
-    index_cols = [c_comprador, c_produto]
+    idx_cols = [c_comprador, c_produto]
 
-    # 2. Parte 1: Preços MÉDIOS por Concorrente (bandeira)
-    df_medias = (
-        df_base
-        .groupby(index_cols + [c_concorrente], as_index=False)
-        [c_preco_conc]
-        .mean()
-        .pivot(index=index_cols, columns=c_concorrente, values=c_preco_conc)
-    )
-
-    # 3. Parte 2: Preços ESPECÍFICOS por Concorrente / Loja
-    df_lojas = (
-        df_base
-        .assign(**{c_concorrente: df_base[c_concorrente] + " / " + df_base[c_loja]})
-        .pivot(index=index_cols, columns=c_concorrente, values=c_preco_conc)
-    )
-
-    # 4. Mart Minas
-    df_mart = (
-        df_base[[c_comprador, c_produto, c_preco_mart]]
-        .drop_duplicates()
-        .set_index(index_cols)[c_preco_mart]
-        .to_frame("Mart Minas")
-    )
-
-    # --- NOVO: Cálculo da Competitividade ---
-    # Pegamos o menor preço entre todas as colunas de concorrentes (médias e lojas) que seja > 0
-    todos_concorrentes = pd.concat([df_medias, df_lojas], axis=1)
-    menor_concorrente = todos_concorrentes.replace(0, np.nan).min(axis=1)
+    # 3. Construção das partes (Médias e Lojas)
+    df_medias = df_base.pivot_table(index=idx_cols, columns=c_concorrente, values=c_preco_conc, aggfunc='mean')
     
-    # Cálculo: Mart Minas / Menor Concorrente
-    df_mart["Comp. %"] = (df_mart["Mart Minas"] / menor_concorrente)
-    # ----------------------------------------
+    df_lojas = df_base.assign(Loja_Label=df_base[c_concorrente] + " / " + df_base[c_loja]) \
+                      .pivot_table(index=idx_cols, columns='Loja_Label', values=c_preco_conc, aggfunc='mean')
 
-    # 5. Juntar tudo
-    df_final = df_mart.join(df_medias, how='left').join(df_lojas, how='left', rsuffix='_loja')
+    df_mart = df_base.groupby(idx_cols)[c_preco_mart].max().to_frame("Mart Minas")
 
-    # Reordenar: Mart Minas -> Comp. % -> Médias -> Detalhes
-    cols_mart = ["Mart Minas", "Comp. %"]
-    cols_medias = sorted([c for c in df_medias.columns])
-    cols_detalhe = sorted([c for c in df_lojas.columns])
-    df_final = df_final[cols_mart + cols_medias + cols_detalhe]
-
-    # 6. Formatação
-    def fmt_valores(v, is_perc=False):
-        if pd.isna(v) or v == 0:
-            return ""
-        if is_perc:
-            return f"{v*100:.1f}%"
-        return f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-
-    # Aplicando formatos diferentes por coluna
-    format_dict = {col: (lambda x: fmt_valores(x, True)) if col == "Comp. %" else (lambda x: fmt_valores(x)) 
-                   for col in df_final.columns}
+    # 4. Cálculo da Competitividade (Menor preço > 0 entre todos os concorrentes)
+    todos_conc = pd.concat([df_medias, df_lojas], axis=1)
+    # Substitui 0 por NaN para o .min() ignorar zeros
+    menor_valor_conc = todos_conc.replace(0, np.nan).min(axis=1)
     
-    return df_final.style.format(format_dict).set_properties(**{'text-align': 'center'})
+    df_mart["Comp. %"] = (df_mart["Mart Minas"] / menor_valor_conc)
 
-    # Opcional: destacar visualmente
-    #def destacar(col):
-    #    if col.name == "Mart Minas":
-    #        return ['background-color: #e8f5e9; font-weight: bold' for _ in col]
-    #    if " / " in str(col.name):
-    #        return ['background-color: #f3e5f5' for _ in col]  # lilás claro para detalhe loja
-    #    return [''] * len(col
-    #styled = styled.apply(destacar, axis=0))
+    # 5. Juntar e remover qualquer duplicata de coluna residual
+    df_final = pd.concat([df_mart, df_medias, df_lojas], axis=1)
+    df_final = df_final.loc[:, ~df_final.columns.duplicated()] # Garante colunas únicas
 
-    # Congelar cabeçalho e índice
-    styled = styled.set_properties(**{'text-align': 'center'})
+    # 6. Formatação Segura
+    def formatar_valores(val, is_perc=False):
+        if pd.isna(val) or val == 0: return ""
+        if is_perc: return f"{val:.1%}"
+        return f"R$ {val:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
-    return styled
+    # Criando o dicionário de formatação mapeado
+    format_map = {}
+    for col in df_final.columns:
+        if col == "Comp. %":
+            format_map[col] = lambda x: formatar_valores(x, is_perc=True)
+        else:
+            format_map[col] = lambda x: formatar_valores(x)
+
+    return df_final.style.format(format_map)
 
 # ================== APP ==================
 try:
