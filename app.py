@@ -40,6 +40,10 @@ st.markdown("""
         text-align: center !important;
         justify-content: center !important;
     }
+            
+    [data-testid="stSidebar"] {
+        width: 300px !important; /* Ajuste este valor (ex: 400px, 500px) como preferir */
+    }
     </style>
 """, unsafe_allow_html=True)
 
