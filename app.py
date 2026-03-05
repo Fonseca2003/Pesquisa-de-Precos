@@ -56,21 +56,6 @@ if "prod_idx" not in st.session_state:
     st.session_state.prod_idx = 0
 
 # ================== CONFIGURAÇÕES COMERCIAL ==================
-
-# Valores ATIVOS (usados nas análises)
-if "config_ativa" not in st.session_state:
-    st.session_state.config_ativa = {
-        "range_min": 0.5,
-        "range_max": 1.5,
-        "considerar_obs": False,
-        "considerar_menor_preco": True
-    }
-
-# Valores TEMPORÁRIOS (usados na tela de configuração)
-if "config_temp" not in st.session_state:
-    st.session_state.config_temp = st.session_state.config_ativa.copy()
-
-# ================== CONFIG PADRÃO (SEMPRE GARANTIDO) ==================
 DEFAULT_CONFIG = {
     "range_min": 0.5,
     "range_max": 1.5,
@@ -122,35 +107,36 @@ def preparar_dados_validos(df):
 
 # ================== FILTROS DINÂMICOS COMERCIAL ==================
 def aplicar_filtros_configuracoes(df):
-    df_filtrado = preparar_dados_validos(df).copy()
-    cols = df.columns
+    df_calc = df.copy()
+    # Identifica as colunas D (Concorrente) e G (Mart Minas)
+    c_preco_conc = df.columns[3] 
+    c_preco_mart = df.columns[6]
+    c_obs = df.columns[4]
+    c_produto = df.columns[2]
+    
+    # Conversão numérica rigorosa
+    df_calc[c_preco_conc] = pd.to_numeric(df_calc[c_preco_conc].astype(str).str.replace(',', '.'), errors='coerce')
+    df_calc[c_preco_mart] = pd.to_numeric(df_calc[c_preco_mart].astype(str).str.replace(',', '.'), errors='coerce')
 
-    cfg = st.session_state.config_ativa
+    # Remove valores inválidos para evitar divisão por zero
+    df_calc = df_calc[(df_calc[c_preco_conc] > 0) & (df_calc[c_preco_mart] > 0)]
 
-    c_preco = cols[3]
-    c_ref   = cols[6]
-    c_obs   = cols[4]
-    c_nome  = cols[2]
+    # REGRA: Mart Minas (G) / Concorrente (D)
+    ratio = df_calc[c_preco_mart] / df_calc[c_preco_conc]
+    
+    # USA AS VARIÁVEIS DO SESSION_STATE DIRETAMENTE
+    mask_range = (ratio >= st.session_state.range_min) & (ratio <= st.session_state.range_max)
+    df_filtrado = df_calc[mask_range].copy()
 
-    # -------- RANGE --------
-    ratio = df_filtrado[c_ref] / df_filtrado[c_preco]
-
-    df_filtrado = df_filtrado[
-        (ratio >= cfg["range_min"]) &
-        (ratio <= cfg["range_max"])
-    ]
-
-    # -------- OBSERVAÇÃO --------
-    if not cfg["considerar_obs"]:
+    if not st.session_state.considerar_obs:
         df_filtrado = df_filtrado[
             (df_filtrado[c_obs].astype(str).str.strip() == "") |
-            (df_filtrado[c_nome].astype(str).str.endswith("(MENOR PREÇO)"))
+            (df_filtrado[c_produto].astype(str).str.endswith("(MENOR PREÇO)"))
         ]
 
-    # -------- (MENOR PREÇO) --------
-    if not cfg["considerar_menor_preco"]:
+    if not st.session_state.considerar_menor_preco:
         df_filtrado = df_filtrado[
-            ~df_filtrado[c_nome].astype(str).str.endswith("(MENOR PREÇO)")
+            ~df_filtrado[c_produto].astype(str).str.endswith("(MENOR PREÇO)")
         ]
 
     return df_filtrado
@@ -409,14 +395,16 @@ def gerar_tabelas_produtos_cruzada(df):
 
     # 4. Cálculo da Competitividade (Menor preço > 0 entre todos os concorrentes)
     todos_conc = pd.concat([df_medias, df_lojas], axis=1)
-    # Substitui 0 por NaN para o .min() ignorar zeros
     menor_valor_conc = todos_conc.replace(0, np.nan).min(axis=1)
     
     df_mart["Comp. %"] = (df_mart["Mart Minas"] / menor_valor_conc)
 
-    # 5. Juntar e remover qualquer duplicata de coluna residual
+    # NOVO: Remove da visualização o que estiver fora do range configurado
+    mask_visual = (df_mart["Comp. %"] >= st.session_state.range_min) & \
+                (df_mart["Comp. %"] <= st.session_state.range_max)
+    
     df_final = pd.concat([df_mart, df_medias, df_lojas], axis=1)
-    df_final = df_final.loc[:, ~df_final.columns.duplicated()] # Garante colunas únicas
+    df_final = df_final[mask_visual] # Aplica o corte na tabela final
 
     # 6. Formatação Segura
     def formatar_valores(val, is_perc=False):
@@ -537,7 +525,7 @@ try:
                 
                 st.divider()
                 st.subheader("Cestas R$")
-                df_sm = calcular_soma_competitividade_simples(df_completo, grp, format_money=False)
+                df_sm = calcular_soma_competitividade_simples(df_filtrado, grp, format_money=False)
                 st.dataframe(aplicar_estilo_dinamico(df_sm.style), use_container_width=True, hide_index=True)
 
         with tabs[3]: # Aba Completo
