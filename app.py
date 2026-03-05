@@ -429,11 +429,15 @@ try:
     NOME_PADRAO = "Pesquisa de Preços"
 
     if st.session_state.autenticado and st.session_state.perfil == "comercial":
-        nome_sel = st.sidebar.selectbox("Arquivo:", options=list(planilhas_drive.keys()), key="filtro_planilha")
+        # Criamos uma lista filtrada excluindo o nome indesejado
+        opcoes_arquivos = [nome for nome in planilhas_drive.keys() if nome != "Pesquisa de Preços"]
+        
+        # Usamos a lista filtrada no selectbox
+        nome_sel = st.sidebar.selectbox("Arquivo:", options=opcoes_arquivos, key="filtro_planilha")
         id_atual = planilhas_drive[nome_sel]
     else:
+        # Mantém a lógica padrão para outros casos
         id_atual = planilhas_drive.get(NOME_PADRAO, list(planilhas_drive.values())[0])
-
     df_raw = fetch_data(id_atual)
     cols = df_raw.columns
 
