@@ -55,6 +55,33 @@ if "concorrente_sel" not in st.session_state:
 if "prod_idx" not in st.session_state:
     st.session_state.prod_idx = 0
 
+# ================== CONFIGURAÇÕES COMERCIAL ==================
+
+# Valores ATIVOS (usados nas análises)
+if "config_ativa" not in st.session_state:
+    st.session_state.config_ativa = {
+        "range_min": 0.5,
+        "range_max": 1.5,
+        "considerar_obs": False,
+        "considerar_menor_preco": True
+    }
+
+# Valores TEMPORÁRIOS (usados na tela de configuração)
+if "config_temp" not in st.session_state:
+    st.session_state.config_temp = st.session_state.config_ativa.copy()
+
+# ================== CONFIG PADRÃO (SEMPRE GARANTIDO) ==================
+DEFAULT_CONFIG = {
+    "range_min": 0.5,
+    "range_max": 1.5,
+    "considerar_obs": False,
+    "considerar_menor_preco": True,
+}
+
+for key, value in DEFAULT_CONFIG.items():
+    if key not in st.session_state:
+        st.session_state[key] = value
+
 # ================== FUNÇÕES CORE ==================
 @st.cache_resource
 def authenticate_gspread():
@@ -66,11 +93,11 @@ def listar_planilhas_no_drive(_client):
     lista_arquivos = _client.list_spreadsheet_files()
     return {f["name"]: f["id"] for f in lista_arquivos}
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=30)
 def fetch_data(spreadsheet_id):
     client = gspread.authorize(authenticate_gspread())
     sheet = client.open_by_key(spreadsheet_id).get_worksheet(0)
-    data = sheet.get_all_values()
+    data = sheet.get_values("A:G")
     df = pd.DataFrame(data[1:], columns=data[0])
     return df.iloc[:, :7]
 
@@ -92,6 +119,41 @@ def preparar_dados_validos(df):
     df_calc[c_preco] = pd.to_numeric(df_calc[c_preco].astype(str).str.replace(',', '.'), errors='coerce')
     df_calc[c_ref] = pd.to_numeric(df_calc[c_ref].astype(str).str.replace(',', '.'), errors='coerce')
     return df_calc[(df_calc[c_preco] > 0) & (df_calc[c_ref] > 0)].copy()
+
+# ================== FILTROS DINÂMICOS COMERCIAL ==================
+def aplicar_filtros_configuracoes(df):
+    df_filtrado = preparar_dados_validos(df).copy()
+    cols = df.columns
+
+    cfg = st.session_state.config_ativa
+
+    c_preco = cols[3]
+    c_ref   = cols[6]
+    c_obs   = cols[4]
+    c_nome  = cols[2]
+
+    # -------- RANGE --------
+    ratio = df_filtrado[c_ref] / df_filtrado[c_preco]
+
+    df_filtrado = df_filtrado[
+        (ratio >= cfg["range_min"]) &
+        (ratio <= cfg["range_max"])
+    ]
+
+    # -------- OBSERVAÇÃO --------
+    if not cfg["considerar_obs"]:
+        df_filtrado = df_filtrado[
+            (df_filtrado[c_obs].astype(str).str.strip() == "") |
+            (df_filtrado[c_nome].astype(str).str.endswith("(MENOR PREÇO)"))
+        ]
+
+    # -------- (MENOR PREÇO) --------
+    if not cfg["considerar_menor_preco"]:
+        df_filtrado = df_filtrado[
+            ~df_filtrado[c_nome].astype(str).str.endswith("(MENOR PREÇO)")
+        ]
+
+    return df_filtrado
 
 # ================== FUNÇÃO EXPORTAR ==================
 
@@ -211,7 +273,13 @@ def formatar_moeda(valor):
 # ================== LÓGICA DE VISÕES ==================
 
 def calcular_metricas_simples(df, agrupador):
-    df_v = preparar_dados_validos(df)
+    df_v = df.copy()
+
+    c_p, c_r = df.columns[3], df.columns[6]
+
+    df_v[c_p] = pd.to_numeric(df_v[c_p], errors="coerce")
+    df_v[c_r] = pd.to_numeric(df_v[c_r], errors="coerce")
+
     if df_v.empty: return pd.DataFrame()
     c_p, c_r = df.columns[3], df.columns[6]
     res = df_v.groupby(agrupador).apply(lambda x: pd.Series({
@@ -226,7 +294,13 @@ def calcular_metricas_simples(df, agrupador):
     return res[[agrupador, 'Encontrados', 'Menor', '% Menor', 'Maior', '% Maior']]
 
 def calcular_soma_competitividade_simples(df, agrupador, format_money=False):
-    df_v = preparar_dados_validos(df)
+    df_v = df.copy()
+
+    c_p, c_r = df.columns[3], df.columns[6]
+
+    df_v[c_p] = pd.to_numeric(df_v[c_p], errors="coerce")
+    df_v[c_r] = pd.to_numeric(df_v[c_r], errors="coerce")
+
     if df_v.empty: return pd.DataFrame()
     c_p, c_r = df.columns[3], df.columns[6]
     res = df_v.groupby(agrupador).apply(lambda x: pd.Series({
@@ -244,7 +318,14 @@ def calcular_soma_competitividade_simples(df, agrupador, format_money=False):
     return res
 
 def visao_matriz_loja_concorrente(df, tipo="contagem"):
-    df_v = preparar_dados_validos(df)
+    df_v = df.copy()
+
+    cols = df.columns
+    c_p, c_r = cols[3], cols[6]
+
+    df_v[c_p] = pd.to_numeric(df_v[c_p], errors="coerce")
+    df_v[c_r] = pd.to_numeric(df_v[c_r], errors="coerce")
+
     if df_v.empty: return pd.DataFrame()
     cols = df.columns
     compradores = sorted(df_v[cols[1]].unique())
@@ -295,36 +376,104 @@ def visao_matriz_loja_concorrente(df, tipo="contagem"):
     df_final.loc['TOTAL'] = totals
     return df_final
 
-def gerar_tabelas_produtos_cruzada(df, tipo="media"):
-    cols = df.columns
-    df_v = preparar_dados_validos(df)
-    if df_v.empty: return pd.DataFrame()
-    
-    concorrentes = sorted(df_v[cols[5]].unique())
-    new_cols = []
-    data_dict = {}
-    
-    for conc in concorrentes:
-        df_conc = df_v[df_v[cols[5]] == conc]
-        
-        # Agrupa por Comprador (cols[1]) e Produto (cols[2])
-        if tipo == "media":
-            s_mart = df_conc.groupby([cols[1], cols[2]])[cols[6]].mean()
-            s_conc = df_conc.groupby([cols[1], cols[2]])[cols[3]].mean()
-            label_val = "Média"
-        else:
-            s_mart = df_conc.groupby([cols[1], cols[2]])[cols[6]].sum()
-            s_conc = df_conc.groupby([cols[1], cols[2]])[cols[3]].sum()
-            label_val = "Soma"
+def gerar_tabelas_produtos_cruzada(df):
+    if df.empty:
+        return pd.DataFrame().style
 
-        data_dict[(conc, f'{label_val} Mart Minas')] = s_mart
-        data_dict[(conc, f'{label_val} Concorrente')] = s_conc
-        data_dict[(conc, 'Comp. %')] = (s_mart / s_conc) * 100
-        new_cols.extend([(conc, f'{label_val} Mart Minas'), (conc, f'{label_val} Concorrente'), (conc, 'Comp. %')])
-        
-    df_res = pd.DataFrame(data_dict)
-    df_res.columns = pd.MultiIndex.from_tuples(new_cols)
-    return df_res
+    # Colunas chave
+    c_loja        = cols[0]   # 'Loja'
+    c_comprador   = cols[1]   # 'Comprador'
+    c_produto     = cols[2]   # 'Produto'
+    c_preco_conc  = cols[3]   # Preço Concorrente
+    c_concorrente = cols[5]   # 'Concorrente'
+    c_preco_mart  = cols[6]   # Preço Mart Minas
+
+    # Garantir numérico
+    for col in [c_preco_conc, c_preco_mart]:
+        df[col] = pd.to_numeric(df[col].astype(str).str.replace(',', '.'), errors='coerce')
+
+    # 1. Agregação base
+    df_base = (
+        df
+        .groupby([c_comprador, c_produto, c_concorrente, c_loja], as_index=False)
+        .agg({
+            c_preco_conc: 'mean',
+            c_preco_mart: 'first',
+        })
+        .dropna(subset=[c_preco_conc])
+    )
+
+    index_cols = [c_comprador, c_produto]
+
+    # 2. Parte 1: Preços MÉDIOS por Concorrente (bandeira)
+    df_medias = (
+        df_base
+        .groupby(index_cols + [c_concorrente], as_index=False)
+        [c_preco_conc]
+        .mean()
+        .pivot(index=index_cols, columns=c_concorrente, values=c_preco_conc)
+    )
+
+    # 3. Parte 2: Preços ESPECÍFICOS por Concorrente / Loja
+    df_lojas = (
+        df_base
+        .assign(**{c_concorrente: df_base[c_concorrente] + " / " + df_base[c_loja]})
+        .pivot(index=index_cols, columns=c_concorrente, values=c_preco_conc)
+    )
+
+    # 4. Mart Minas
+    df_mart = (
+        df_base[[c_comprador, c_produto, c_preco_mart]]
+        .drop_duplicates()
+        .set_index(index_cols)[c_preco_mart]
+        .to_frame("Mart Minas")
+    )
+
+    # --- NOVO: Cálculo da Competitividade ---
+    # Pegamos o menor preço entre todas as colunas de concorrentes (médias e lojas) que seja > 0
+    todos_concorrentes = pd.concat([df_medias, df_lojas], axis=1)
+    menor_concorrente = todos_concorrentes.replace(0, np.nan).min(axis=1)
+    
+    # Cálculo: Mart Minas / Menor Concorrente
+    df_mart["Comp. %"] = (df_mart["Mart Minas"] / menor_concorrente)
+    # ----------------------------------------
+
+    # 5. Juntar tudo
+    df_final = df_mart.join(df_medias, how='left').join(df_lojas, how='left', rsuffix='_loja')
+
+    # Reordenar: Mart Minas -> Comp. % -> Médias -> Detalhes
+    cols_mart = ["Mart Minas", "Comp. %"]
+    cols_medias = sorted([c for c in df_medias.columns])
+    cols_detalhe = sorted([c for c in df_lojas.columns])
+    df_final = df_final[cols_mart + cols_medias + cols_detalhe]
+
+    # 6. Formatação
+    def fmt_valores(v, is_perc=False):
+        if pd.isna(v) or v == 0:
+            return ""
+        if is_perc:
+            return f"{v*100:.1f}%"
+        return f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+    # Aplicando formatos diferentes por coluna
+    format_dict = {col: (lambda x: fmt_valores(x, True)) if col == "Comp. %" else (lambda x: fmt_valores(x)) 
+                   for col in df_final.columns}
+    
+    return df_final.style.format(format_dict).set_properties(**{'text-align': 'center'})
+
+    # Opcional: destacar visualmente
+    #def destacar(col):
+    #    if col.name == "Mart Minas":
+    #        return ['background-color: #e8f5e9; font-weight: bold' for _ in col]
+    #    if " / " in str(col.name):
+    #        return ['background-color: #f3e5f5' for _ in col]  # lilás claro para detalhe loja
+    #    return [''] * len(col
+    #styled = styled.apply(destacar, axis=0))
+
+    # Congelar cabeçalho e índice
+    styled = styled.set_properties(**{'text-align': 'center'})
+
+    return styled
 
 # ================== APP ==================
 try:
@@ -377,16 +526,17 @@ try:
         # BARRA LATERAL
         st.sidebar.divider()
         
-        dict_all = {"Base Completa Drive": df_raw}
+        # ================= APLICA CONFIGURAÇÕES ATIVAS =================
+        df_filtrado = aplicar_filtros_configuracoes(df_completo)
+
+        # ================= MONTA DICIONÁRIO DE EXPORTAÇÃO =================
+        dict_all = {"Base Completa Drive": df_filtrado}
+
         labels = ["Comprador", "Concorrente", "Loja"]
+
         for i, grp in enumerate([cols[1], cols[5], cols[0]]):
-            dict_all[f"Contagem_{labels[i]}"] = calcular_metricas_simples(df_completo, grp)
-            dict_all[f"Soma_{labels[i]}"] = calcular_soma_competitividade_simples(df_completo, grp, format_money=False)
-        
-        dict_all["Matriz_Contagem_Geral"] = visao_matriz_loja_concorrente(df_completo, "contagem")
-        dict_all["Matriz_Soma_Geral"] = visao_matriz_loja_concorrente(df_completo, "soma")
-        dict_all["Produtos_Medias"] = gerar_tabelas_produtos_cruzada(df_completo, "media")
-        dict_all["Produtos_Somas"] = gerar_tabelas_produtos_cruzada(df_completo, "soma")
+            dict_all[f"Contagem_{labels[i]}"] = calcular_metricas_simples(df_filtrado, grp)
+            dict_all[f"Soma_{labels[i]}"] = calcular_soma_competitividade_simples(df_filtrado, grp, format_money=False)
 
         excel_data = to_excel_consolidated(dict_all)
         st.sidebar.download_button(
@@ -397,7 +547,7 @@ try:
             use_container_width=True
         )
 
-        tabs = st.tabs(["Comprador", "Concorrente", "Loja", "Completo", "Produtos"])
+        tabs = st.tabs(["Comprador", "Concorrente", "Loja", "Completo", "Preços Por Produto", "⚙️ Configurações"])
         
         # FORMATADOR INTELIGENTE DE COLUNAS
         def aplicar_estilo_dinamico(styler):
@@ -415,7 +565,7 @@ try:
                     format_dict[col] = formatar_moeda
                 else:
                     # Se for contagem pura (Encontrados, Menor, Maior)
-                    format_dict[col] = lambda x: f"{int(x)}" if isinstance(x, (int, float)) else x
+                    format_dict[col] = lambda x: "" if pd.isna(x) else f"{int(x)}" if isinstance(x, (int, float)) else x
             
             return styler.format(format_dict)
 
@@ -423,7 +573,7 @@ try:
         for i, grp in enumerate([cols[1], cols[5], cols[0]]):
             with tabs[i]:
                 st.subheader("Mart Minas Menor Preço")
-                df_met = calcular_metricas_simples(df_completo, grp)
+                df_met = calcular_metricas_simples(df_filtrado, grp)
                 st.dataframe(df_met, use_container_width=True, hide_index=True)
                 
                 st.divider()
@@ -433,23 +583,94 @@ try:
 
         with tabs[3]: # Aba Completo
             st.subheader("Mart Minas Menor Preço")
-            df_lc_c = visao_matriz_loja_concorrente(df_completo, "contagem")
+            df_lc_c = visao_matriz_loja_concorrente(df_filtrado, "contagem")
             st.dataframe(aplicar_estilo_dinamico(df_lc_c.style), use_container_width=True)
             
             st.divider()
             st.subheader("Cestas R$")
-            df_lc_s = visao_matriz_loja_concorrente(df_completo, "soma")
+            df_lc_s = visao_matriz_loja_concorrente(df_filtrado, "soma")
             st.dataframe(aplicar_estilo_dinamico(df_lc_s.style), use_container_width=True)
 
-        with tabs[4]: # Aba Produtos
-            st.subheader("Médias por Produto")
-            df_p_m = gerar_tabelas_produtos_cruzada(df_completo, "media")
-            st.dataframe(aplicar_estilo_dinamico(df_p_m.style), use_container_width=True)
-            
-            st.divider()
-            st.subheader("Somas por Produto")
-            df_p_s = gerar_tabelas_produtos_cruzada(df_completo, "soma")
-            st.dataframe(aplicar_estilo_dinamico(df_p_s.style), use_container_width=True)
+        with tabs[4]:
+            st.subheader("Preços por Produto (Concorrentes × Mart Minas)")
+            df_styled = gerar_tabelas_produtos_cruzada(df_filtrado)
+            st.dataframe(
+                df_styled,
+                use_container_width=True,
+                hide_index=False,           # mostra comprador e produto no índice
+            )
+
+        with tabs[5]:  # Aba Configurações
+
+            # Inicializa temporários se não existirem
+            if "tmp_range_min" not in st.session_state:
+                st.session_state.tmp_range_min = st.session_state.range_min
+
+            if "tmp_range_max" not in st.session_state:
+                st.session_state.tmp_range_max = st.session_state.range_max
+
+            if "tmp_considerar_obs" not in st.session_state:
+                st.session_state.tmp_considerar_obs = st.session_state.considerar_obs
+
+            if "tmp_considerar_menor_preco" not in st.session_state:
+                st.session_state.tmp_considerar_menor_preco = st.session_state.considerar_menor_preco
+
+            # ================== FORM (SEM RERUN AUTOMÁTICO) ==================
+            with st.form("form_configuracoes"):
+
+                st.markdown("### Range de Competitividade")
+
+                col1, col2 = st.columns(2)
+
+                with col1:
+                    tmp_min = st.number_input(
+                        "Range mínimo (%)",
+                        min_value=0.0,
+                        max_value=1000.0,
+                        value=st.session_state.tmp_range_min * 100,
+                        step=5.0
+                    )
+
+                with col2:
+                    tmp_max = st.number_input(
+                        "Range máximo (%)",
+                        min_value=0.0,
+                        max_value=1000.0,
+                        value=st.session_state.tmp_range_max * 100,
+                        step=5.0
+                    )
+
+                st.divider()
+
+                tmp_obs = st.checkbox(
+                    "Considerar produtos com observação",
+                    value=st.session_state.tmp_considerar_obs
+                )
+
+                tmp_menor_preco = st.checkbox(
+                    'Considerar produtos com "(MENOR PREÇO)" no nome',
+                    value=st.session_state.tmp_considerar_menor_preco
+                )
+
+                st.divider()
+
+                salvar = st.form_submit_button("💾 Salvar Configurações", use_container_width=True)
+
+                if salvar:
+                    st.session_state.range_min = tmp_min / 100
+                    st.session_state.range_max = tmp_max / 100
+                    st.session_state.considerar_obs = tmp_obs
+                    st.session_state.considerar_menor_preco = tmp_menor_preco
+
+                    # Atualiza temporários também
+                    st.session_state.tmp_range_min = tmp_min / 100
+                    st.session_state.tmp_range_max = tmp_max / 100
+                    st.session_state.tmp_considerar_obs = tmp_obs
+                    st.session_state.tmp_considerar_menor_preco = tmp_menor_preco
+
+                    st.success("Configurações aplicadas com sucesso!")
+                    st.rerun()
+                    
     elif st.session_state.perfil == "loja":
         if st.sidebar.button("⬅️ Sair / Trocar Loja"):
             st.session_state.autenticado = False
@@ -526,4 +747,3 @@ try:
                         st.rerun()
 except Exception as e: 
     st.error(f"Erro: {e}")
-
